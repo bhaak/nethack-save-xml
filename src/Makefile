@@ -257,6 +257,38 @@ WINBELIB = -lbe
 
 WINLIB = $(WINTTYLIB)
 
+SAVEFILEXMLDEP = ../include/flag.h ../include/you.h ../include/prop.h \
+		 ../include/quest.h ../include/skills.h ../include/align.h \
+		 ../include/spell.h ../include/coord.h ../include/timeout.h \
+		 ../include/dungeon.h ../include/decl.h ../include/objclass.h \
+		 ../include/mkroom.h ../include/lev.h ../include/trap.h \
+		 ../include/engrave.h ../include/rm.h ../include/rect.h \
+		 ../include/region.h ../include/obj.h ../include/monst.h \
+		 ../include/vault.h ../include/epri.h ../include/eshk.h \
+		 ../include/emin.h ../include/edog.h ../include/attrib.h \
+		 ../include/global.h \
+		 ../src/dungeon.c ../src/engrave.c ../src/light.c ../src/mkmaze.c \
+		 ../src/region.c ../src/save.c ../src/timeout.c ../src/restore_xml.y
+
+SAVEFILEXMLSRC = save_xml.c restore_xml_core.c restore_xml_lex.c restore_xml_yacc.c
+SAVEFILEXMLOBJ = save_xml.o restore_xml_core.o restore_xml_lex.o restore_xml_yacc.o
+
+YACC     = yacc
+#LEX      = lex
+# YACC     = bison -y
+# YACC     = byacc
+LEX      = flex -8
+YTABC = y.tab.c
+YTABH = y.tab.h
+LEXYYC = lex.yy.c
+# YTABC = y_tab.c
+# YTABH = y_tab.h
+# LEXYYC = lexyy.c
+
+#FLEXDIST = -Cfe
+YACCDIST =
+
+
 # any other strange libraries your system needs (for Sysunix only -- the more
 # specialized targets should already be right)
 #
@@ -343,7 +375,7 @@ WINCSRC = $(WINTTYSRC) $(WINX11SRC) $(WINGNOMESRC) $(WINGEMSRC)
 WINCXXSRC = $(WINQTSRC) $(WINBESRC)
 
 # .c files for this version (for date.h)
-VERSOURCES = $(HACKCSRC) $(SYSSRC) $(WINSRC) $(GENCSRC)
+VERSOURCES = $(HACKCSRC) $(SYSSRC) $(WINSRC) $(GENCSRC) $(SAVEFILEXMLSRC)
 
 # .c files for all versions using this Makefile (for lint and tags)
 CSOURCES = $(HACKCSRC) $(SYSSRC) $(WINCSRC) $(GENCSRC)
@@ -384,7 +416,7 @@ HOBJ = $(FIRSTOBJ) allmain.o alloc.o apply.o artifact.o attrib.o ball.o \
 	steal.o steed.o teleport.o timeout.o topten.o track.o trap.o u_init.o \
 	uhitm.o vault.o vision.o vis_tab.o weapon.o were.o wield.o windows.o \
 	wizard.o worm.o worn.o write.o zap.o \
-	$(RANDOBJ) $(SYSOBJ) $(WINOBJ) version.o
+	$(RANDOBJ) $(SYSOBJ) $(WINOBJ) $(SAVEFILEXMLOBJ) version.o
 # the .o files from the HACKCSRC, SYSSRC, and WINSRC lists
 
 $(GAME):	$(SYSTEM)
@@ -502,6 +534,26 @@ tile.c: ../win/share/tilemap.c $(HACK_H)
 #	up to date before being executed
 ../include/date.h:	$(VERSOURCES) $(HACK_H)
 	../util/makedefs -v
+
+# for xml save file format
+save_xml.c: $(SAVEFILEXMLDEP) ../util/parse_struct.pl
+	perl ../util/parse_struct.pl $(SAVEFILEXMLDEP)
+restore_xml_core.c: save_xml.c
+save_xml.o: save_xml.c $(HACK_H)
+restore_xml_core.o: restore_xml_core.c $(HACK_H)
+restore_xml_yacc.o: restore_xml_yacc.c $(HACK_H)
+restore_xml_lex.o: restore_xml_lex.c $(HACK_H) ../include/restore_xml.h
+
+../include/restore_xml.h: restore_xml_yacc.c
+
+restore_xml_yacc.c: restore_xml.y
+	$(YACC) $(YACCDIST) -d restore_xml.y
+	mv $(YTABC) restore_xml_yacc.c
+	mv $(YTABH) ../include/restore_xml.h
+
+restore_xml_lex.c: restore_xml.l
+	$(LEX) $(FLEXDIST) restore_xml.l
+	mv $(LEXYYC) restore_xml_lex.c
 
 
 lint:
