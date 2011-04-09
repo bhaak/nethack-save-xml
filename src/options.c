@@ -332,6 +332,9 @@ static struct Comp_Opt
 	{ "windowcolors",  "the foreground/background colors of windows",	/*WC*/
 						80, DISP_IN_GAME },
 	{ "windowtype", "windowing system to use", WINTYPELEN, DISP_IN_GAME },
+#ifdef SAVE_FILE_XML
+	{ "savefile_format", "save file format", 6, SET_IN_GAME },
+#endif
 	{ (char *)0, (char *)0, 0, 0 }
 };
 
@@ -512,6 +515,10 @@ initoptions()
 	iflags.prevmsg_window = 's';
 #endif
 	iflags.menu_headings = ATR_INVERSE;
+
+#ifdef SAVE_FILE_XML
+	iflags.savefile_format = SAVE_FILE_FORMAT_BIN;
+#endif
 
 	/* Use negative indices to indicate not yet selected */
 	flags.initrole = -1;
@@ -1799,6 +1806,22 @@ goodfruit:
 		if (badopt) badoption(opts);
 		return;
 	}
+#ifdef SAVE_FILE_XML
+	fullname = "savefile_format";
+	if (match_optname(opts, fullname, 15, TRUE)) {
+	    if (negated) {
+		iflags.savefile_format = SAVE_FILE_FORMAT_BIN;
+	    } else if ((op = string_for_opt(opts, FALSE)) != 0) {
+		if (*op == '0' || !strncmpi(op, "binary", strlen(op)))
+		    iflags.savefile_format = SAVE_FILE_FORMAT_BIN;
+		else if (*op == '1' || !strncmpi(op, "xml", strlen(op)))
+		    iflags.savefile_format = SAVE_FILE_FORMAT_XML;
+		else
+		    badoption(opts);
+	    }
+	    return;
+	}
+#endif
 
 	/* scores:5t[op] 5a[round] o[wn] */
 	if (match_optname(opts, "scores", 4, TRUE)) {
@@ -2874,6 +2897,25 @@ ape_again:
 	}
 	retval = TRUE;
 #endif /* AUTOPICKUP_EXCEPTIONS */
+#ifdef SAVE_FILE_XML
+    } else if (!strcmp("savefile_format", optname)) {
+	menu_item *mode_pick = (menu_item *)0;
+	tmpwin = create_nhwindow(NHW_MENU);
+	start_menu(tmpwin);
+	any.a_int = 1;
+	add_menu(tmpwin, NO_GLYPH, &any, 'B', 0,
+		 ATR_NONE, "Binary", MENU_UNSELECTED);
+	any.a_int = 2;
+	add_menu(tmpwin, NO_GLYPH, &any, 'X', 0,
+		 ATR_NONE, "XML", MENU_UNSELECTED);
+	end_menu(tmpwin, "Select save file format:");
+	if (select_menu(tmpwin, PICK_ONE, &mode_pick) > 0) {
+		iflags.savefile_format = mode_pick->item.a_int - 1;
+		free((genericptr_t)mode_pick);
+	}
+	destroy_nhwindow(tmpwin);
+	retval = TRUE;
+#endif
     }
     return retval;
 }
@@ -3132,6 +3174,12 @@ char *buf;
 			iflags.wc_backgrnd_status  ? iflags.wc_backgrnd_status : defbrief,
 			iflags.wc_foregrnd_text    ? iflags.wc_foregrnd_text : defbrief,
 			iflags.wc_backgrnd_text    ? iflags.wc_backgrnd_text : defbrief);
+#ifdef SAVE_FILE_XML
+	else if (!strcmp(optname, "savefile_format"))
+		Sprintf(buf, "%s",
+			(iflags.savefile_format == SAVE_FILE_FORMAT_BIN) ? "0=binary" :
+			(iflags.savefile_format == SAVE_FILE_FORMAT_XML) ? "1=XML" : "?");
+#endif
 #ifdef PREFIXES_IN_USE
 	else {
 	    for (i = 0; i < PREFIX_COUNT; ++i)

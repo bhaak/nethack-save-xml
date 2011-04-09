@@ -6,6 +6,10 @@
 #include "lev.h"
 #include "dlb.h"
 
+#ifdef SAVE_FILE_XML
+# include "save_xml.h"
+#endif
+
 /*	[note: this comment is fairly old, but still accurate for 3.1]
  * Rumors have been entirely rewritten to speed up the access.  This is
  * essential when working from floppies.  Using fseek() the way that's done
@@ -206,9 +210,22 @@ save_oracles(fd, mode)
 int fd, mode;
 {
 	if (perform_bwrite(mode)) {
+#ifdef SAVE_FILE_XML
+	  if (is_savefile_format_xml) {
+	    int i;
+
+	    XMLTAG_ORACLES_BGN(fd, oracle_cnt);
+	    for (i = 0; i < oracle_cnt; i++) {
+		save_long_xml(fd, "oracle", oracle_loc[i]);
+	    }
+	    XMLTAG_ORACLES_END(fd);
+	  } else
+#endif
+	  {
 	    bwrite(fd, (genericptr_t) &oracle_cnt, sizeof oracle_cnt);
 	    if (oracle_cnt)
 		bwrite(fd, (genericptr_t)oracle_loc, oracle_cnt*sizeof (long));
+	  }
 	}
 	if (release_data(mode)) {
 	    if (oracle_cnt) {
@@ -229,6 +246,74 @@ int fd;
 	    oracle_flg = 1;	/* no need to call init_oracles() */
 	}
 }
+
+#ifdef SAVE_FILE_XML
+void
+restore_oracles_xml(cnt, loc)
+unsigned cnt;
+long *loc;
+{
+	if (!loc) {
+	    oracle_cnt = 0;
+	    oracle_loc = loc;
+	    return;
+	}
+
+	if (cnt) {
+	    int i, j;
+	    long x;
+	    dlb *oracles;
+
+	    /* 読み込み位置がずれていた場合の正規化 */
+	    if ((oracles = dlb_fopen(ORACLEFILE, "r"))) {
+		init_oracles(oracles);
+		oracle_flg = 1;			/* no need to call init_oracles() */
+		if (oracle_cnt == 0) {
+		    oracle_cnt = cnt;
+		    oracle_loc = loc;
+
+		    return;
+		}
+
+		for(i = 1; i < cnt; i++) {
+		    x = loc[i];
+		    for(j = i - 1; j > 0 && loc[j] > x; j--)
+			loc[j + 1] = loc[j];
+		    loc[j + 1] = x;
+		}
+
+		/* oracle_loc[0] is the special oracle; */
+		x = oracle_loc[0] - loc[0];	/* offset */
+		loc[0] = oracle_loc[0];
+
+		for(i = 1, j = 1; i < cnt; i++) {
+		    x += loc[i];
+		    while(j < oracle_cnt && oracle_loc[j] < x)
+			j++;
+		    if (j >= oracle_cnt)
+			j = oracle_cnt - 1;
+
+		    if (abs(x - oracle_loc[j - 1]) < abs(oracle_loc[j] - x)) {
+			x = oracle_loc[j - 1] - loc[i];	/* offset */
+			loc[i] = oracle_loc[j - 1];
+		    } else {
+			x = oracle_loc[j] - loc[i];	/* offset */
+			loc[i] = oracle_loc[j];
+		    }
+		}
+
+		free(oracle_loc);
+		(void) dlb_fclose(oracles);
+	    } else {
+		pline("Can't open oracles file!");
+		oracle_flg = -1;	/* don't try to open it again */
+	    }
+
+	    oracle_cnt = cnt;
+	    oracle_loc = loc;
+	}
+}
+#endif /* SAVE_FILE_XML */
 
 void
 outoracle(special, delphi)

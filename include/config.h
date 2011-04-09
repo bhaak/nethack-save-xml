@@ -180,6 +180,14 @@
 # define INTERNAL_COMP	/* control use of NetHack's compression routines */
 #endif
 
+/* save file format */
+#define SAVE_FILE_XML
+
+/* bone file format */
+#ifdef SAVE_FILE_XML
+# define BONE_FILE_XML
+#endif
+
 /*
  *	Data librarian.  Defining DLB places most of the support files into
  *	a tar-like file, thus making a neater installation.  See *conf.h

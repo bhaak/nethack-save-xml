@@ -6,6 +6,10 @@
 #include "lev.h"
 #include "tcap.h" /* for TERMLIB and ASCIIGRAPH */
 
+#ifdef SAVE_FILE_XML
+# include "save_xml.h"
+#endif
+
 #if defined(MICRO)
 extern int dotcnt;	/* shared with save */
 extern int dotrow;	/* shared with save */
@@ -18,18 +22,20 @@ extern void FDECL(substitute_tiles, (d_level *));       /* from tile.c */
 #ifdef ZEROCOMP
 static int NDECL(mgetc);
 #endif
-STATIC_DCL void NDECL(find_lev_obj);
 STATIC_DCL void FDECL(restlevchn, (int));
 STATIC_DCL void FDECL(restdamage, (int,BOOLEAN_P));
 STATIC_DCL struct obj *FDECL(restobjchn, (int,BOOLEAN_P,BOOLEAN_P));
 STATIC_DCL struct monst *FDECL(restmonchn, (int,BOOLEAN_P));
 STATIC_DCL struct fruit *FDECL(loadfruitchn, (int));
-STATIC_DCL void FDECL(freefruitchn, (struct fruit *));
-STATIC_DCL void FDECL(ghostfruit, (struct obj *));
 STATIC_DCL boolean FDECL(restgamestate, (int, unsigned int *, unsigned int *));
+#ifndef SAVE_FILE_XML
 STATIC_DCL void FDECL(restlevelstate, (unsigned int, unsigned int));
 STATIC_DCL int FDECL(restlevelfile, (int,XCHAR_P));
 STATIC_DCL void FDECL(reset_oattached_mids, (BOOLEAN_P));
+STATIC_DCL void NDECL(find_lev_obj);
+STATIC_DCL void FDECL(freefruitchn, (struct fruit *));
+STATIC_DCL void FDECL(ghostfruit, (struct obj *));
+#endif
 
 /*
  * Save a mapping of IDs from ghost levels to the current level.  This
@@ -44,8 +50,10 @@ struct bucket {
     } map[N_PER_BUCKET];
 };
 
+#ifndef SAVE_FILE_XML
 STATIC_DCL void NDECL(clear_id_mapping);
 STATIC_DCL void FDECL(add_id_mapping, (unsigned, unsigned));
+#endif
 
 static int n_ids_mapped = 0;
 static struct bucket *id_map = 0;
@@ -59,13 +67,21 @@ extern int amii_numcolors;
 #include "quest.h"
 
 boolean restoring = FALSE;
+#ifdef SAVE_FILE_XML
+struct fruit *oldfruit;
+#else
 static NEARDATA struct fruit *oldfruit;
+#endif
 static NEARDATA long omoves;
 
 #define Is_IceBox(o) ((o)->otyp == ICE_BOX ? TRUE : FALSE)
 
 /* Recalculate level.objects[x][y], since this info was not saved. */
+#ifdef SAVE_FILE_XML
+void
+#else
 STATIC_OVL void
+#endif
 find_lev_obj()
 {
 	register struct obj *fobjtmp = (struct obj *)0;
@@ -326,7 +342,11 @@ int fd;
 	return flist;
 }
 
+#ifdef SAVE_FILE_XML
+void
+#else
 STATIC_OVL void
+#endif
 freefruitchn(flist)
 register struct fruit *flist;
 {
@@ -339,7 +359,11 @@ register struct fruit *flist;
 	}
 }
 
+#ifdef SAVE_FILE_XML
+void
+#else
 STATIC_OVL void
+#endif
 ghostfruit(otmp)
 register struct obj *otmp;
 {
@@ -454,7 +478,11 @@ unsigned int *stuckid, *steedid;	/* STEED */
 /* update game state pointers to those valid for the current level (so we
  * don't dereference a wild u.ustuck when saving the game state, for instance)
  */
+#ifdef SAVE_FILE_XML
+void
+#else
 STATIC_OVL void
+#endif
 restlevelstate(stuckid, steedid)
 unsigned int stuckid, steedid;	/* STEED */
 {
@@ -478,7 +506,11 @@ unsigned int stuckid, steedid;	/* STEED */
 }
 
 /*ARGSUSED*/	/* fd used in MFLOPPY only */
+#ifdef SAVE_FILE_XML
+int
+#else
 STATIC_OVL int
+#endif
 restlevelfile(fd, ltmp)
 register int fd;
 xchar ltmp;
@@ -548,6 +580,11 @@ register int fd;
 	xchar ltmp;
 	int rtmp;
 	struct obj *otmp;
+
+#ifdef SAVE_FILE_XML
+	if (!!(restore_file_format_xml & RESTORE_FILE_IS_XML))
+		return dorecover_xml(fd);
+#endif
 
 #ifdef STORE_PLNAME_IN_FILE
 	mread(fd, (genericptr_t) plname, PL_NSIZ);
@@ -905,7 +942,11 @@ boolean ghostly;
 
 
 /* Clear all structures for object and monster ID mapping. */
+#ifdef SAVE_FILE_XML
+void
+#else
 STATIC_OVL void
+#endif
 clear_id_mapping()
 {
     struct bucket *curr;
@@ -918,7 +959,11 @@ clear_id_mapping()
 }
 
 /* Add a mapping to the ID map. */
+#ifdef SAVE_FILE_XML
+void
+#else
 STATIC_OVL void
+#endif
 add_id_mapping(gid, nid)
     unsigned gid, nid;
 {
@@ -969,7 +1014,11 @@ lookup_id_mapping(gid, nidp)
     return FALSE;
 }
 
+#ifdef SAVE_FILE_XML
+void
+#else
 STATIC_OVL void
+#endif
 reset_oattached_mids(ghostly)
 boolean ghostly;
 {

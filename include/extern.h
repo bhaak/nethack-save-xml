@@ -1764,7 +1764,20 @@ E void FDECL(savelev, (int,XCHAR_P,int));
 E void FDECL(bufon, (int));
 E void FDECL(bufoff, (int));
 E void FDECL(bflush, (int));
-E void FDECL(bwrite, (int,genericptr_t,unsigned int));
+E void FDECL(bwrite_, (int,genericptr_t,unsigned int));
+#ifdef SAVE_FILE_XML
+# define bwrite(fd, loc, num)	do { \
+					if (!is_savefile_format_xml) { \
+						bwrite_(fd, loc, num); \
+					} else { \
+						save_octet_xml(fd, #loc, loc, num); \
+						impossible("Can't save variable: %s:%d:\t%s[%d]", \
+							__FILE__, __LINE__, #loc, num); \
+					} \
+				} while (0)
+#else
+# define bwrite(fd, loc, num)	bwrite_(fd, loc, num)
+#endif
 E void FDECL(bclose, (int));
 E void FDECL(savefruitchn, (int,int));
 E void NDECL(free_dungeons);

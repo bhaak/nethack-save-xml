@@ -6,6 +6,10 @@
 #include "lev.h"
 #include <ctype.h>
 
+#ifdef SAVE_FILE_XML
+# include "save_xml.h"
+#endif
+
 STATIC_VAR NEARDATA struct engr *head_engr;
 
 #ifdef OVLB
@@ -1119,18 +1123,36 @@ int fd, mode;
 	register struct engr *ep2;
 	unsigned no_more_engr = 0;
 
+#ifdef SAVE_FILE_XML
+	if (is_savefile_format_xml && perform_bwrite(mode))
+	    XMLTAG_ENGRAVINGS_BGN(fd);
+#endif
+
 	while (ep) {
 	    ep2 = ep->nxt_engr;
 	    if (ep->engr_lth && ep->engr_txt[0] && perform_bwrite(mode)) {
+#ifdef SAVE_FILE_XML
+	      if (is_savefile_format_xml)
+		save_engr_xml(fd, "engr", ep);
+	      else
+#endif
+	      {
 		bwrite(fd, (genericptr_t)&(ep->engr_lth), sizeof(ep->engr_lth));
 		bwrite(fd, (genericptr_t)ep, sizeof(struct engr) + ep->engr_lth);
+	      }
 	    }
 	    if (release_data(mode))
 		dealloc_engr(ep);
 	    ep = ep2;
 	}
-	if (perform_bwrite(mode))
+	if (perform_bwrite(mode)) {
+#ifdef SAVE_FILE_XML
+	  if (is_savefile_format_xml)
+	    XMLTAG_ENGRAVINGS_END(fd);
+	  else
+#endif
 	    bwrite(fd, (genericptr_t)&no_more_engr, sizeof no_more_engr);
+	}
 	if (release_data(mode))
 	    head_engr = 0;
 }
@@ -1255,5 +1277,11 @@ const char *str;
 
 
 #endif /* OVLB */
+
+#ifdef SAVE_FILE_XML
+struct var_info_t var_info_engrave_c[] = {
+	REGIST_VAR_INFO( "head_engr",	&head_engr,	struct engr *),
+};
+#endif /* SAVE_FILE_XML */
 
 /*engrave.c*/

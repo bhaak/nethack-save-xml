@@ -14,6 +14,10 @@
 #include "patchlevel.h"
 #endif
 
+#ifdef SAVE_FILE_XML
+# include "save_xml.h"
+#endif
+
 /* #define BETA_INFO "" */	/* "[ beta n]" */
 
 /* fill buffer with short version (so caller can avoid including date.h) */
@@ -118,6 +122,17 @@ const char *name;
 	}
 	return FALSE;
     }
+#ifdef SAVE_FILE_XML
+    /* if save file format is xml, version check afterwards. */
+    if (cheak_save_file_format(&vers_info, sizeof vers_info) != RESTORE_FILE_IS_BINARY) {
+#ifdef BSD
+	(void) lseek(fd, (long)(-(sizeof vers_info)), SEEK_CUR);
+#else
+	(void) lseek(fd, (off_t)(-(sizeof vers_info)), SEEK_CUR);
+#endif
+	return TRUE;
+    }
+#endif
     if (!check_version(&vers_info, name, verbose)) {
 	if (verbose) wait_synch();
 	return FALSE;
@@ -140,6 +155,31 @@ int fd;
 	bufon(fd);
 	return;
 }
+
+#ifdef SAVE_FILE_XML
+void
+store_version_xml(fd)
+int fd;
+{
+	struct version_info version_data = {
+		VERSION_NUMBER, VERSION_FEATURES,
+		VERSION_SANITY1, VERSION_SANITY2
+	};
+
+	bufoff(fd);
+
+	XMLTAG_VERSION_BGN(fd);
+
+	save_version_info_xml(fd, "version_data", &version_data);
+
+	save_string_xml(fd, "variant", "vanilla");
+
+	XMLTAG_VERSION_END(fd);
+
+	bufon(fd);
+	return;
+}
+#endif
 
 #ifdef AMIGA
 const char amiga_version_string[] = AMIGA_VERSION_STRING;

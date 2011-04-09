@@ -5,6 +5,10 @@
 #include "hack.h"
 #include "lev.h"	/* for checking save modes */
 
+#ifdef SAVE_FILE_XML
+# include "save_xml.h"
+#endif
+
 /*
  * Mobile light sources.
  *
@@ -236,8 +240,17 @@ save_light_sources(fd, mode, range)
 
     if (perform_bwrite(mode)) {
 	count = maybe_write_ls(fd, range, FALSE);
+#ifdef SAVE_FILE_XML
+	if (is_savefile_format_xml) {
+	    XMLTAG_LIGHT_SOURCES_BGN(fd, count);
+	} else
+#endif
 	bwrite(fd, (genericptr_t) &count, sizeof count);
 	actual = maybe_write_ls(fd, range, TRUE);
+#ifdef SAVE_FILE_XML
+	if (is_savefile_format_xml)
+	    XMLTAG_LIGHT_SOURCES_END(fd);
+#endif
 	if (actual != count)
 	    panic("counted %d light sources, wrote %d! [range=%d]",
 		  count, actual, range);
@@ -372,6 +385,19 @@ maybe_write_ls(fd, range, write_it)
 }
 
 /* Write a light source structure to disk. */
+static void
+write_ls_core(fd, ls)
+int fd;
+light_source *ls;
+{
+#ifdef SAVE_FILE_XML
+	if (is_savefile_format_xml)
+	    save_light_source_xml(fd, "ls", ls);
+	else
+#endif
+	    bwrite(fd, (genericptr_t)ls, sizeof(light_source));
+}
+
 STATIC_OVL void
 write_ls(fd, ls)
     int fd;
@@ -383,7 +409,7 @@ write_ls(fd, ls)
 
     if (ls->type == LS_OBJECT || ls->type == LS_MONSTER) {
 	if (ls->flags & LSF_NEEDS_FIXUP)
-	    bwrite(fd, (genericptr_t)ls, sizeof(light_source));
+	    write_ls_core(fd, ls);
 	else {
 	    /* replace object pointer with id for write, then put back */
 	    arg_save = ls->id;
@@ -403,7 +429,7 @@ write_ls(fd, ls)
 #endif
 	    }
 	    ls->flags |= LSF_NEEDS_FIXUP;
-	    bwrite(fd, (genericptr_t)ls, sizeof(light_source));
+	    write_ls_core(fd, ls);
 	    ls->id = arg_save;
 	    ls->flags &= ~LSF_NEEDS_FIXUP;
 	}
@@ -622,5 +648,11 @@ wiz_light_sources()
 #endif /* WIZARD */
 
 #endif /* OVL3 */
+
+#ifdef SAVE_FILE_XML
+struct var_info_t var_info_light_c[] = {
+	REGIST_VAR_INFO( "light_base",	&light_base,	light_source *),
+};
+#endif /* SAVE_FILE_XML */
 
 /*light.c*/

@@ -5,6 +5,10 @@
 #include "hack.h"
 #include "lev.h"
 
+#ifdef SAVE_FILE_XML
+# include "save_xml.h"
+#endif
+
 /*
  * This should really go into the level structure, but
  * I'll start here for ease. It *WILL* move into the level
@@ -621,9 +625,26 @@ int mode;
 
     if (!perform_bwrite(mode)) goto skip_lots;
 
+#ifdef SAVE_FILE_XML
+    if (is_savefile_format_xml) {
+	XMLTAG_REGIONS_BGN(fd);
+
+	save_long_xml(fd, "moves", moves);
+	if (n_regions)
+	    XMLTAG_ARRAY_BGN(fd, "regions", n_regions);
+    } else
+#endif
+    {
     bwrite(fd, (genericptr_t) &moves, sizeof (moves));	/* timestamp */
     bwrite(fd, (genericptr_t) &n_regions, sizeof (n_regions));
+    }
     for (i = 0; i < n_regions; i++) {
+#ifdef SAVE_FILE_XML
+      if (is_savefile_format_xml) {
+	save_NhRegion_xml(fd, num2str(i), regions[i]);
+      } else
+#endif
+      {
 	bwrite(fd, (genericptr_t) &regions[i]->bounding_box, sizeof (NhRect));
 	bwrite(fd, (genericptr_t) &regions[i]->nrects, sizeof (short));
 	for (j = 0; j < regions[i]->nrects; j++)
@@ -654,7 +675,16 @@ int mode;
 	bwrite(fd, (genericptr_t) &regions[i]->visible, sizeof (boolean));
 	bwrite(fd, (genericptr_t) &regions[i]->glyph, sizeof (int));
 	bwrite(fd, (genericptr_t) &regions[i]->arg, sizeof (genericptr_t));
+      }
     }
+
+#ifdef SAVE_FILE_XML
+    if (is_savefile_format_xml) {
+	if (n_regions)
+	    XMLTAG_ARRAY_END(fd);
+	XMLTAG_REGIONS_END(fd);
+    }
+#endif
 
 skip_lots:
     if (release_data(mode))
@@ -981,5 +1011,15 @@ int damage;
     add_region(cloud);
     return cloud;
 }
+
+#ifdef SAVE_FILE_XML
+struct var_info_t var_info_region_c[] = {
+	REGIST_VAR_INFO( "max_regions",	&max_regions,	int	),
+	REGIST_VAR_INFO( "moves",	NULL,		long	),
+	REGIST_VAR_INFO( "n_regions",	&n_regions,	int	),
+	REGIST_VAR_INFO( "regions",	&regions,	NhRegion **),
+};
+
+#endif /* SAVE_FILE_XML */
 
 /*region.c*/

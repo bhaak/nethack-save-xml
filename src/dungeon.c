@@ -6,6 +6,10 @@
 #include "dgn_file.h"
 #include "dlb.h"
 
+#ifdef SAVE_FILE_XML
+# include "save_xml.h"
+#endif
+
 #ifdef OVL1
 
 #define DUNGEON_FILE	"dungeon"
@@ -119,23 +123,66 @@ save_dungeon(fd, perform_write, free_data)
     int    count;
 
     if (perform_write) {
+#ifdef SAVE_FILE_XML
+	if (is_savefile_format_xml) {
+	    XMLTAG_DUNGEON_BGN(fd);
+
+	    XMLTAG_ARRAY_BGN(fd, "dungeons", n_dgns);
+	    for(count = 0; count < n_dgns; count++)
+		save_dungeon_xml(fd, num2str(count), &(dungeons[count]));
+	    XMLTAG_ARRAY_END(fd);
+
+	    save_dgn_topology_xml(fd, "dungeon_topology", &dungeon_topology);
+	    save_string_xml(fd, "tune", tune);
+	} else
+#endif
+	{
 	bwrite(fd, (genericptr_t) &n_dgns, sizeof n_dgns);
 	bwrite(fd, (genericptr_t) dungeons, sizeof(dungeon) * (unsigned)n_dgns);
 	bwrite(fd, (genericptr_t) &dungeon_topology, sizeof dungeon_topology);
 	bwrite(fd, (genericptr_t) tune, sizeof tune);
+	}
 
 	for (count = 0, curr = branches; curr; curr = curr->next)
 	    count++;
+#ifdef SAVE_FILE_XML
+	if (is_savefile_format_xml)
+	    XMLTAG_BRANCHES_BGN(fd, count);
+	else
+#endif
 	bwrite(fd, (genericptr_t) &count, sizeof(count));
 
 	for (curr = branches; curr; curr = curr->next)
+#ifdef SAVE_FILE_XML
+	    if (is_savefile_format_xml)
+		save_branch_xml(fd, "branches", curr);
+	    else
+#endif
 	    bwrite(fd, (genericptr_t) curr, sizeof (branch));
-
+#ifdef SAVE_FILE_XML
+	    if (is_savefile_format_xml)
+		XMLTAG_BRANCHES_END(fd);
+#endif
 	count = maxledgerno();
+#ifdef SAVE_FILE_XML
+	if (is_savefile_format_xml) {
+	    int i;
+
+	    XMLTAG_ARRAY_BGN(fd, "level_info", count);
+	    for(i = 0; i < count; i++)
+		save_linfo_xml(fd, num2str(i), &level_info[i]);
+	    XMLTAG_ARRAY_END(fd);
+
+	    save_coord_xml(fd, "inv_pos", &inv_pos);
+	    XMLTAG_DUNGEON_END(fd);
+	} else
+#endif
+	{
 	bwrite(fd, (genericptr_t) &count, sizeof count);
 	bwrite(fd, (genericptr_t) level_info,
 			(unsigned)count * sizeof (struct linfo));
 	bwrite(fd, (genericptr_t) &inv_pos, sizeof inv_pos);
+	}
     }
 
     if (free_data) {
@@ -1740,5 +1787,16 @@ xchar *rdgn;
 #endif /* WIZARD */
 
 #endif /* OVL1 */
+
+#ifdef SAVE_FILE_XML
+struct var_info_t var_info_dungeon_c[] = {
+	REGIST_VAR_INFO("branches",		&branches,		branch *		),
+	REGIST_VAR_INFO("dungeon_topology",	&dungeon_topology,	struct dgn_topology	),
+	REGIST_VAR_INFO("dungeons",		dungeons,		dungeon[MAXDUNGEON]	),
+	REGIST_VAR_INFO("inv_pos",		&inv_pos,		coord			),
+	REGIST_VAR_INFO("level_info",		level_info,		struct linfo[MAXLINFO]	),
+	REGIST_VAR_INFO("tune",			tune,			STRING[6]		),
+};
+#endif /* SAVE_FILE_XML */
 
 /*dungeon.c*/

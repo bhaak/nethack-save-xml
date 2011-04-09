@@ -6,6 +6,10 @@
 #include "sp_lev.h"
 #include "lev.h"	/* save & restore info */
 
+#ifdef SAVE_FILE_XML
+# include "save_xml.h"
+#endif
+
 /* from sp_lev.c, for fixup_special() */
 extern char *lev_message;
 extern lev_region *lregions;
@@ -327,7 +331,11 @@ d_level *lev;
     return(TRUE);
 }
 
+#ifdef SAVE_FILE_XML
+boolean was_waterlevel; /* ugh... this shouldn't be needed */
+#else
 static boolean was_waterlevel; /* ugh... this shouldn't be needed */
+#endif
 
 /* this is special stuff that the level compiler cannot (yet) handle */
 STATIC_OVL void
@@ -916,7 +924,11 @@ register xchar x, y, todnum, todlevel;
 #define CONS_HERO  2
 #define CONS_TRAP  3
 
+#ifdef SAVE_FILE_XML
+struct bubble *bbubbles, *ebubbles;
+#else
 static struct bubble *bbubbles, *ebubbles;
+#endif
 
 static struct trap *wportal;
 static int xmin, ymin, xmax, ymax;	/* level boundaries */
@@ -926,9 +938,15 @@ static int xmin, ymin, xmax, ymax;	/* level boundaries */
 #define bxmax (xmax - 1)
 #define bymax (ymax - 1)
 
-STATIC_DCL void NDECL(set_wportal);
 STATIC_DCL void FDECL(mk_bubble, (int,int,int));
+#ifdef SAVE_FILE_XML
+void FDECL(mv_bubble, (struct bubble *,int,int,BOOLEAN_P));
+void NDECL(set_wportal);
+#else
 STATIC_DCL void FDECL(mv_bubble, (struct bubble *,int,int,BOOLEAN_P));
+STATIC_DCL void NDECL(set_wportal);
+#endif
+
 
 void
 movebubbles()
@@ -1098,6 +1116,26 @@ int fd, mode;
 	if (perform_bwrite(mode)) {
 	    int n = 0;
 	    for (b = bbubbles; b; b = b->next) ++n;
+#ifdef SAVE_FILE_XML
+	    if (is_savefile_format_xml) {
+		XMLTAG_WATERLEBEL_BGN(fd);
+
+		save_int_xml(fd, "xmin", xmin);
+		save_int_xml(fd, "ymin", ymin);
+		save_int_xml(fd, "xmax", xmax);
+		save_int_xml(fd, "ymax", ymax);
+
+		if (n) {
+		    XMLTAG_BUBBLES_BGN(fd, n);
+		    for (b = bbubbles; b; b = b->next)
+			save_bubble_xml(fd, "bbubble", b);
+		    XMLTAG_BUBBLES_END(fd);
+		}
+
+		XMLTAG_WATERLEBEL_END(fd);
+	    } else
+#endif
+	    {
 	    bwrite(fd, (genericptr_t)&n, sizeof (int));
 	    bwrite(fd, (genericptr_t)&xmin, sizeof (int));
 	    bwrite(fd, (genericptr_t)&ymin, sizeof (int));
@@ -1105,6 +1143,7 @@ int fd, mode;
 	    bwrite(fd, (genericptr_t)&ymax, sizeof (int));
 	    for (b = bbubbles; b; b = b->next)
 		bwrite(fd, (genericptr_t)b, sizeof (struct bubble));
+	    }
 	}
 	if (release_data(mode))
 	    unsetup_waterlevel();
@@ -1172,7 +1211,11 @@ xchar x,y;
 	else return "water";
 }
 
+#ifdef SAVE_FILE_XML
+void
+#else
 STATIC_OVL void
+#endif
 set_wportal()
 {
 	/* there better be only one magic portal on water level... */
@@ -1224,10 +1267,34 @@ unsetup_waterlevel()
 	bbubbles = ebubbles = (struct bubble *)0;
 }
 
+#ifdef SAVE_FILE_XML
+/*
+ * These bit masks make visually pleasing bubbles on a normal aspect
+ * 25x80 terminal, which naturally results in them being mathematically
+ * anything but symmetric.  For this reason they cannot be computed
+ * in situ, either.  The first two elements tell the dimensions of
+ * the bubble's bounding box.
+ */
+static uchar
+	bm2[] = {2,1,0x3},
+	bm3[] = {3,2,0x7,0x7},
+	bm4[] = {4,3,0x6,0xf,0x6},
+	bm5[] = {5,3,0xe,0x1f,0xe},
+	bm6[] = {6,4,0x1e,0x3f,0x3f,0x1e},
+	bm7[] = {7,4,0x3e,0x7f,0x7f,0x3e},
+	bm8[] = {8,4,0x7e,0xff,0xff,0x7e};
+
+uchar *bubble_bmask[] = {bm2,bm3,bm4,bm5,bm6,bm7,bm8};
+
+#define bmask bubble_bmask
+
+#endif
+
 STATIC_OVL void
 mk_bubble(x,y,n)
 register int x, y, n;
 {
+#ifndef SAVE_FILE_XML
 	/*
 	 * These bit masks make visually pleasing bubbles on a normal aspect
 	 * 25x80 terminal, which naturally results in them being mathematically
@@ -1244,7 +1311,7 @@ register int x, y, n;
 		bm7[] = {7,4,0x3e,0x7f,0x7f,0x3e},
 		bm8[] = {8,4,0x7e,0xff,0xff,0x7e},
 		*bmask[] = {bm2,bm3,bm4,bm5,bm6,bm7,bm8};
-
+#endif
 	register struct bubble *b;
 
 	if (x >= bxmax || y >= bymax) return;
@@ -1281,7 +1348,11 @@ register int x, y, n;
  * in the immediate neighborhood of one, he/she may get sucked inside.
  * This property also makes leaving a bubble slightly difficult.
  */
+#ifdef SAVE_FILE_XML
+void
+#else
 STATIC_OVL void
+#endif
 mv_bubble(b,dx,dy,ini)
 register struct bubble *b;
 register int dx, dy;
@@ -1411,5 +1482,14 @@ register boolean ini;
 		}
 	}
 }
+
+#ifdef SAVE_FILE_XML
+struct var_info_t var_info_mkmaze_c[] = {
+	REGIST_VAR_INFO( "xmax",	&xmax,	int),
+	REGIST_VAR_INFO( "xmin",	&xmin,	int),
+	REGIST_VAR_INFO( "ymax",	&ymax,	int),
+	REGIST_VAR_INFO( "ymin",	&ymin,	int),
+};
+#endif /* SAVE_FILE_XML */
 
 /*mkmaze.c*/

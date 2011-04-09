@@ -30,7 +30,7 @@ typedef boolean FDECL((*callback_proc), (genericptr_t, genericptr_t));
 #define set_heros_fault(r)	((r)->player_flags &= ~REG_NOT_HEROS)
 #define clear_heros_fault(r)	((r)->player_flags |= REG_NOT_HEROS)
 
-typedef struct {
+typedef struct NhRegion {
   NhRect bounding_box;		/* Bounding box of the region */
   NhRect *rects;		/* Rectangles composing the region */
   short  nrects;		/* Number of rectangles  */

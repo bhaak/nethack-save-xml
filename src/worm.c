@@ -5,14 +5,22 @@
 #include "hack.h"
 #include "lev.h"
 
+#ifdef SAVE_FILE_XML
+# include "save_xml.h"
+#endif
+
+#ifndef SAVE_FILE_XML
 #define newseg()		(struct wseg *) alloc(sizeof(struct wseg))
+#endif
 #define dealloc_seg(wseg)	free((genericptr_t) (wseg))
 
+#ifndef SAVE_FILE_XML
 /* worm segment structure */
 struct wseg {
     struct wseg *nseg;
     xchar  wx, wy;	/* the segment's position */
 };
+#endif /* SAVE_FILE_XML */
 
 STATIC_DCL void FDECL(toss_wsegs, (struct wseg *,BOOLEAN_P));
 STATIC_DCL void FDECL(shrink_worm, (int));
@@ -470,18 +478,48 @@ save_worm(fd, mode)
     struct wseg *curr, *temp;
 
     if (perform_bwrite(mode)) {
+#ifdef SAVE_FILE_XML
+	if (is_savefile_format_xml)
+	    XMLTAG_WORMS_BGN(fd);
+#endif
 	for (i = 1; i < MAX_NUM_WORMS; i++) {
 	    for (count = 0, curr = wtails[i]; curr; curr = curr->nseg) count++;
 	    /* Save number of segments */
+#ifdef SAVE_FILE_XML
+	    if (!is_savefile_format_xml)
+#endif
 	    bwrite(fd, (genericptr_t) &count, sizeof(int));
 	    /* Save segment locations of the monster. */
 	    if (count) {
+#ifdef SAVE_FILE_XML
+		if (is_savefile_format_xml)
+		    XMLTAG_WORM_BGN(fd, i, wgrowtime[i], count);
+#endif
 		for (curr = wtails[i]; curr; curr = curr->nseg) {
+#ifdef SAVE_FILE_XML
+		  if (is_savefile_format_xml) {
+		      XMLTAG_WORM_SEGMENT_BGN(fd);
+		      save_char_xml(fd, "wx", curr->wx);
+		      save_char_xml(fd, "wy", curr->wy);
+		      XMLTAG_WORM_SEGMENT_END(fd);
+		  } else
+#endif
+		  {
 		    bwrite(fd, (genericptr_t) &(curr->wx), sizeof(xchar));
 		    bwrite(fd, (genericptr_t) &(curr->wy), sizeof(xchar));
 		}
 	    }
+#ifdef SAVE_FILE_XML
+		if (is_savefile_format_xml)
+		    XMLTAG_WORM_END(fd);
+#endif
+	    }
 	}
+#ifdef SAVE_FILE_XML
+	if (is_savefile_format_xml)
+	    XMLTAG_WORMS_END(fd);
+	else
+#endif
 	bwrite(fd, (genericptr_t) wgrowtime, sizeof(wgrowtime));
     }
 

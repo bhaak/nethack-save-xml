@@ -545,6 +545,7 @@ restore_xml_yacc.o: restore_xml_yacc.c $(HACK_H)
 restore_xml_lex.o: restore_xml_lex.c $(HACK_H) ../include/restore_xml.h
 
 ../include/restore_xml.h: restore_xml_yacc.c
+../include/struct_info.h: save_xml.c
 
 restore_xml_yacc.c: restore_xml.y
 	$(YACC) $(YACCDIST) -d restore_xml.y

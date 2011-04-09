@@ -5,6 +5,10 @@
 #include "hack.h"
 #include "lev.h"	/* for checking save modes */
 
+#ifdef SAVE_FILE_XML
+# include "save_xml.h"
+#endif
+
 STATIC_DCL void NDECL(stoned_dialogue);
 STATIC_DCL void NDECL(vomiting_dialogue);
 STATIC_DCL void NDECL(choke_dialogue);
@@ -1286,7 +1290,9 @@ do_storms()
 STATIC_DCL const char *FDECL(kind_name, (SHORT_P));
 STATIC_DCL void FDECL(print_queue, (winid, timer_element *));
 #endif
+#ifndef SAVE_FILE_XML
 STATIC_DCL void FDECL(insert_timer, (timer_element *));
+#endif
 STATIC_DCL timer_element *FDECL(remove_timer, (timer_element **, SHORT_P,
 								genericptr_t));
 STATIC_DCL void FDECL(write_timer, (int, timer_element *));
@@ -1565,7 +1571,11 @@ obj_stop_timers(obj)
 
 
 /* Insert timer into the global queue */
+#ifdef SAVE_FILE_XML
+void
+#else
 STATIC_OVL void
+#endif
 insert_timer(gnu)
     timer_element *gnu;
 {
@@ -1603,6 +1613,18 @@ genericptr_t arg;
     return curr;
 }
 
+static void
+write_timer_core(fd, timer)
+int fd;
+timer_element *timer;
+{
+#ifdef SAVE_FILE_XML
+    if (is_savefile_format_xml)
+	save_timer_element_xml(fd, "timer", timer);
+    else
+#endif
+	bwrite(fd, (genericptr_t) timer, sizeof(timer_element));
+}
 
 STATIC_OVL void
 write_timer(fd, timer)
@@ -1615,18 +1637,18 @@ write_timer(fd, timer)
 	case TIMER_GLOBAL:
 	case TIMER_LEVEL:
 	    /* assume no pointers in arg */
-	    bwrite(fd, (genericptr_t) timer, sizeof(timer_element));
+	    write_timer_core(fd, timer);
 	    break;
 
 	case TIMER_OBJECT:
 	    if (timer->needs_fixup)
-		bwrite(fd, (genericptr_t)timer, sizeof(timer_element));
+		write_timer_core(fd, timer);
 	    else {
 		/* replace object pointer with id */
 		arg_save = timer->arg;
 		timer->arg = (genericptr_t)((struct obj *)timer->arg)->o_id;
 		timer->needs_fixup = 1;
-		bwrite(fd, (genericptr_t)timer, sizeof(timer_element));
+		write_timer_core(fd, timer);
 		timer->arg = arg_save;
 		timer->needs_fixup = 0;
 	    }
@@ -1634,13 +1656,13 @@ write_timer(fd, timer)
 
 	case TIMER_MONSTER:
 	    if (timer->needs_fixup)
-		bwrite(fd, (genericptr_t)timer, sizeof(timer_element));
+		write_timer_core(fd, timer);
 	    else {
 		/* replace monster pointer with id */
 		arg_save = timer->arg;
 		timer->arg = (genericptr_t)((struct monst *)timer->arg)->m_id;
 		timer->needs_fixup = 1;
-		bwrite(fd, (genericptr_t)timer, sizeof(timer_element));
+		write_timer_core(fd, timer);
 		timer->arg = arg_save;
 		timer->needs_fixup = 0;
 	    }
@@ -1770,11 +1792,33 @@ save_timers(fd, mode, range)
 
     if (perform_bwrite(mode)) {
 	if (range == RANGE_GLOBAL)
+#ifdef SAVE_FILE_XML
+	  if (is_savefile_format_xml) {
+	    XMLTAG_TIMER_BGN(fd, "gloval");
+	    save_ulong_xml(fd, "timer_id", timer_id);
+	  } else
+#endif
 	    bwrite(fd, (genericptr_t) &timer_id, sizeof(timer_id));
+#ifdef SAVE_FILE_XML
+	else
+	  if (is_savefile_format_xml)
+	    XMLTAG_TIMER_BGN(fd, "local");
+#endif
 
 	count = maybe_write_timer(fd, range, FALSE);
+#ifdef SAVE_FILE_XML
+	if (is_savefile_format_xml)
+	    XMLTAG_TIMERS_BGN(fd, count);
+	else
+#endif
 	bwrite(fd, (genericptr_t) &count, sizeof count);
 	(void) maybe_write_timer(fd, range, TRUE);
+#ifdef SAVE_FILE_XML
+	if (is_savefile_format_xml) {
+	    XMLTAG_TIMERS_END(fd);
+	    XMLTAG_TIMER_END(fd);
+	}
+#endif
     }
 
     if (release_data(mode)) {
@@ -1852,5 +1896,12 @@ relink_timers(ghostly)
 }
 
 #endif /* OVL0 */
+
+#ifdef SAVE_FILE_XML
+struct var_info_t var_info_timeout_c[] = {
+	REGIST_VAR_INFO( "timer",	NULL,		timer_element *	),
+	REGIST_VAR_INFO( "timer_id",	&timer_id,	unsigned long	),
+};
+#endif /* SAVE_FILE_XML */
 
 /*timeout.c*/

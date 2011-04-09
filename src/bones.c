@@ -5,6 +5,10 @@
 #include "hack.h"
 #include "lev.h"
 
+#ifdef BONE_FILE_XML
+# include "save_xml.h"
+#endif
+
 extern char bones[];	/* from files.c */
 #ifdef MFLOPPY
 extern long bytes_counted;
@@ -12,7 +16,9 @@ extern long bytes_counted;
 
 STATIC_DCL boolean FDECL(no_bones_level, (d_level *));
 STATIC_DCL void FDECL(goodfruit, (int));
+#ifndef BONE_FILE_XML
 STATIC_DCL void FDECL(resetobjs,(struct obj *,BOOLEAN_P));
+#endif
 STATIC_DCL void FDECL(drop_upon_death, (struct monst *, struct obj *));
 
 STATIC_OVL boolean
@@ -53,7 +59,11 @@ int id;
 	}
 }
 
+#ifdef BONE_FILE_XML
+void
+#else
 STATIC_OVL void
+#endif
 resetobjs(ochain,restore)
 struct obj *ochain;
 boolean restore;
@@ -329,6 +339,10 @@ struct obj *corpse;
 	}
 	c = (char) (strlen(bonesid) + 1);
 
+#ifdef BONE_FILE_XML
+	is_savefile_format_xml = 1;
+#endif
+
 #ifdef MFLOPPY  /* check whether there is room */
 	if (iflags.checkspace) {
 	    savelev(fd, ledger_no(&u.uz), COUNT_SAVE);
@@ -354,21 +368,42 @@ struct obj *corpse;
 # endif
 		(void) close(fd);
 		cancel_bonesfile();
+#ifdef BONE_FILE_XML
+		is_savefile_format_xml = 0;
+#endif
 		return;
 	    }
 	    co_false();	/* make sure stuff before savelev() gets written */
 	}
 #endif /* MFLOPPY */
 
+#ifdef BONE_FILE_XML
+	if (is_savefile_format_xml) {
+		XMLTAG_BONEDATA_BGN(fd, bonesid);
+		store_version_xml(fd);
+	} else {
+#endif
 	store_version(fd);
 	bwrite(fd, (genericptr_t) &c, sizeof c);
 	bwrite(fd, (genericptr_t) bonesid, (unsigned) c);	/* DD.nnn */
+#ifdef BONE_FILE_XML
+	}
+#endif
 	savefruitchn(fd, WRITE_SAVE | FREE_SAVE);
 	update_mlstmv();	/* update monsters for eventual restoration */
 	savelev(fd, ledger_no(&u.uz), WRITE_SAVE | FREE_SAVE);
+#ifdef BONE_FILE_XML
+	if (is_savefile_format_xml) {
+		XMLTAG_BONEDATA_END(fd);
+	}
+#endif
 	bclose(fd);
 	commit_bonesfile(&u.uz);
 	compress_bonesfile();
+
+#ifdef BONE_FILE_XML
+	is_savefile_format_xml = 0;
+#endif
 }
 
 int
@@ -405,6 +440,11 @@ getbones()
 				return(0);
 			}
 		}
+#endif
+#ifdef BONE_FILE_XML
+		if (!!(restore_file_format_xml & BONE_FILE_IS_XML)) {
+			ok = getbones_xml(fd, bonesid);
+		} else {
 #endif
 		mread(fd, (genericptr_t) &c, sizeof c);	/* length incl. '\0' */
 		mread(fd, (genericptr_t) oldbonesid, (unsigned) c); /* DD.nnn */
@@ -449,6 +489,9 @@ getbones()
 		}
 	}
 	(void) close(fd);
+#ifdef BONE_FILE_XML
+	}
+#endif
 
 #ifdef WIZARD
 	if(wizard) {

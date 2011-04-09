@@ -358,9 +358,12 @@ E int FDECL(getbones_xml,		(int, const char *));
 #endif
 
 /* ### japanese/jlib.c ### */
-
+#if 0
 E const char * FDECL(str2ic_xml,	(const char *));
 E const char * FDECL(ic2str_xml,	(const char *));
+#endif
+#define str2ic_xml(str)		(str)
+#define ic2str_xml(str)		(str)
 
 /* ### artifact.c ### */
 

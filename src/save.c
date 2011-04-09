@@ -6,6 +6,10 @@
 #include "lev.h"
 #include "quest.h"
 
+#ifdef SAVE_FILE_XML
+# include "save_xml.h"
+#endif
+
 #ifndef NO_SIGNAL
 #include <signal.h>
 #endif
@@ -27,8 +31,17 @@ STATIC_DCL void FDECL(bputc, (int));
 #endif
 STATIC_DCL void FDECL(savelevchn, (int,int));
 STATIC_DCL void FDECL(savedamage, (int,int));
+
+#ifdef SAVE_FILE_XML
+#define saveobjchn(fd, obj, mode) saveobjchn_(fd, #obj, obj, mode)
+#define savemonchn(fd, mon, mode) savemonchn_(fd, #mon, mon, mode)
+STATIC_DCL void FDECL(saveobjchn_, (int, const char *, struct obj *, int));
+STATIC_DCL void FDECL(savemonchn_, (int, const char *, struct monst *, int));
+#else
 STATIC_DCL void FDECL(saveobjchn, (int,struct obj *,int));
 STATIC_DCL void FDECL(savemonchn, (int,struct monst *,int));
+#endif
+
 STATIC_DCL void FDECL(savetrapchn, (int,struct trap *,int));
 STATIC_DCL void FDECL(savegamestate, (int,int));
 #ifdef MFLOPPY
@@ -167,6 +180,11 @@ dosave0()
 	if(iflags.window_inited)
 	    HUP clear_nhwindow(WIN_MESSAGE);
 
+#ifdef SAVE_FILE_XML
+	if (iflags.savefile_format == SAVE_FILE_FORMAT_XML)
+	    is_savefile_format_xml = 1;
+#endif
+
 #ifdef MICRO
 	dotcnt = 0;
 	dotrow = 2;
@@ -195,6 +213,9 @@ dosave0()
 		flushout();
 		(void) close(fd);
 		(void) delete_savefile();
+#ifdef SAVE_FILE_XML
+		is_savefile_format_xml = 0;
+#endif
 		return 0;
 	    }
 
@@ -202,17 +223,42 @@ dosave0()
 	}
 #endif /* MFLOPPY */
 
+#ifdef SAVE_FILE_XML
+	if (is_savefile_format_xml) {
+		XMLTAG_SAVEDATA_BGN(fd);
+		store_version_xml(fd);
+
+		XMLTAG_PROPERTY_BGN(fd);
+		save_short_xml(fd, "max_obj",	   NUM_OBJECTS);
+		save_short_xml(fd, "max_mon",	   NUMMONS    );
+		save_short_xml(fd, "max_objclass", MAXOCLASSES);
+		XMLTAG_PROPERTY_END(fd);
+	} else {
+#endif
 	store_version(fd);
 #ifdef STORE_PLNAME_IN_FILE
 	bwrite(fd, (genericptr_t) plname, PL_NSIZ);
+#endif
+#ifdef SAVE_FILE_XML
+	}
 #endif
 	ustuck_id = (u.ustuck ? u.ustuck->m_id : 0);
 #ifdef STEED
 	usteed_id = (u.usteed ? u.usteed->m_id : 0);
 #endif
+#ifdef SAVE_FILE_XML
+	if (is_savefile_format_xml) {
+	    XMLTAG_CURRENT_STAT_BGN(fd);
+	}
+#endif
 	savelev(fd, ledger_no(&u.uz), WRITE_SAVE | FREE_SAVE);
 	savegamestate(fd, WRITE_SAVE | FREE_SAVE);
-
+#ifdef SAVE_FILE_XML
+	if (is_savefile_format_xml) {
+	    XMLTAG_CURRENT_STAT_END(fd);
+	    XMLTAG_LEVELS_BGN(fd);
+	}
+#endif
 	/* While copying level files around, zero out u.uz to keep
 	 * parts of the restore code from completely initializing all
 	 * in-core data structures, since all we're doing is copying.
@@ -249,15 +295,28 @@ dosave0()
 		    (void) delete_savefile();
 		    HUP killer = whynot;
 		    HUP done(TRICKED);
+#ifdef SAVE_FILE_XML
+		    is_savefile_format_xml = 0;
+#endif
 		    return(0);
 		}
 		minit();	/* ZEROCOMP */
 		getlev(ofd, hackpid, ltmp, FALSE);
 		(void) close(ofd);
+#ifdef SAVE_FILE_XML
+		if (!is_savefile_format_xml)
+#endif
 		bwrite(fd, (genericptr_t) &ltmp, sizeof ltmp); /* level number*/
+
 		savelev(fd, ltmp, WRITE_SAVE | FREE_SAVE);     /* actual level*/
 		delete_levelfile(ltmp);
 	}
+#ifdef SAVE_FILE_XML
+	if (is_savefile_format_xml) {
+		XMLTAG_LEVELS_END(fd);
+		XMLTAG_SAVEDATA_END(fd);
+	}
+#endif
 	bclose(fd);
 
 	u.uz = uz_save;
@@ -266,6 +325,9 @@ dosave0()
 	delete_levelfile(ledger_no(&u.uz));
 	delete_levelfile(0);
 	compress(fq_save);
+#ifdef SAVE_FILE_XML
+	is_savefile_format_xml = 0;
+#endif
 	return(1);
 }
 
@@ -279,10 +341,20 @@ register int fd, mode;
 	count_only = (mode & COUNT_SAVE);
 #endif
 	uid = getuid();
+#ifdef SAVE_FILE_XML
+	if (is_savefile_format_xml) {
+	    XMLTAG_GAMESTAT_BGN(fd);
+	    save_int_xml(fd, "uid", uid);
+	    save_flag_xml(fd, "flags", &flags);
+	    save_you_xml(fd, "u", &u);
+	} else {
+#endif
 	bwrite(fd, (genericptr_t) &uid, sizeof uid);
 	bwrite(fd, (genericptr_t) &flags, sizeof(struct flag));
 	bwrite(fd, (genericptr_t) &u, sizeof(struct you));
-
+#ifdef SAVE_FILE_XML
+	}
+#endif
 	/* must come before migrating_objs and migrating_mons are freed */
 	save_timers(fd, mode, RANGE_GLOBAL);
 	save_light_sources(fd, mode, RANGE_GLOBAL);
@@ -295,30 +367,72 @@ register int fd, mode;
 	    migrating_objs = 0;
 	    migrating_mons = 0;
 	}
+#ifdef SAVE_FILE_XML
+	if (is_savefile_format_xml)
+	    savemvitals_xml(fd, "mvitals", mvitals);
+	else
+#endif
 	bwrite(fd, (genericptr_t) mvitals, sizeof(mvitals));
 
 	save_dungeon(fd, (boolean)!!perform_bwrite(mode),
 			 (boolean)!!release_data(mode));
 	savelevchn(fd, mode);
+#ifdef SAVE_FILE_XML
+	if (is_savefile_format_xml) {
+	    save_long_xml(fd, "moves", moves);
+	    save_long_xml(fd, "monstermoves", monstermoves);
+	    save_q_score_xml(fd, "quest_status", &quest_status);
+	    save_spl_book_xml(fd, "spl_book", spl_book);
+	} else {
+#endif
 	bwrite(fd, (genericptr_t) &moves, sizeof moves);
 	bwrite(fd, (genericptr_t) &monstermoves, sizeof monstermoves);
 	bwrite(fd, (genericptr_t) &quest_status, sizeof(struct q_score));
 	bwrite(fd, (genericptr_t) spl_book,
 				sizeof(struct spell) * (MAXSPELL + 1));
+#ifdef SAVE_FILE_XML
+	}
+#endif
 	save_artifacts(fd);
 	save_oracles(fd, mode);
-	if(ustuck_id)
+	if(ustuck_id) {
+#ifdef SAVE_FILE_XML
+	    if (is_savefile_format_xml)
+		save_uint_xml(fd, "ustuck_id", ustuck_id);
+	    else
+#endif
 	    bwrite(fd, (genericptr_t) &ustuck_id, sizeof ustuck_id);
+	}
 #ifdef STEED
-	if(usteed_id)
+	if(usteed_id) {
+#ifdef SAVE_FILE_XML
+	    if (is_savefile_format_xml)
+		save_uint_xml(fd, "usteed_id", usteed_id);
+	    else
+#endif
 	    bwrite(fd, (genericptr_t) &usteed_id, sizeof usteed_id);
+	}
+#endif
+#ifdef SAVE_FILE_XML
+	if (is_savefile_format_xml) {
+	    save_string_xml(fd, "pl_character", pl_character);
+	    save_string_xml(fd, "pl_fruit", ic2str_xml(pl_fruit));
+	    save_int_xml(fd, "current_fruit", current_fruit);
+	} else {
 #endif
 	bwrite(fd, (genericptr_t) pl_character, sizeof pl_character);
 	bwrite(fd, (genericptr_t) pl_fruit, sizeof pl_fruit);
 	bwrite(fd, (genericptr_t) &current_fruit, sizeof current_fruit);
+#ifdef SAVE_FILE_XML
+	}
+#endif
 	savefruitchn(fd, mode);
 	savenames(fd, mode);
 	save_waterlevel(fd, mode);
+#ifdef SAVE_FILE_XML
+	if (is_savefile_format_xml)
+	    XMLTAG_GAMESTAT_END(fd);
+#endif
 	bflush(fd);
 }
 
@@ -460,12 +574,150 @@ int mode;
 #endif
 	if (lev >= 0 && lev <= maxledgerno())
 	    level_info[lev].flags |= VISITED;
+#ifdef SAVE_FILE_XML
+	if (is_savefile_format_xml) {
+	    XMLTAG_LEVELDATA_BGN(fd, (int)lev);
+	    save_int_xml(fd, "hackpid", hackpid);
+	}else
+#endif
 	bwrite(fd,(genericptr_t) &hackpid,sizeof(hackpid));
+#ifdef SAVE_FILE_XML
+	if (!is_savefile_format_xml) {
+#endif
 #ifdef TOS
 	tlev=lev; tlev &= 0x00ff;
 	bwrite(fd,(genericptr_t) &tlev,sizeof(tlev));
 #else
 	bwrite(fd,(genericptr_t) &lev,sizeof(lev));
+#endif
+#ifdef SAVE_FILE_XML
+	}
+
+	if (is_savefile_format_xml) {
+	    char buf[BUFSZ];
+	    int x, y, ox, oy, lx, ly;
+	    int i, ccp, regp, background;
+	    coord cc[COLNO*ROWNO];
+	    short count[COLNO*ROWNO];
+	    short map[COLNO][ROWNO], reg_map[COLNO*ROWNO];
+	    coord reg_org[COLNO*ROWNO], reg_end[COLNO*ROWNO];
+
+	    cc[0].x = 0; cc[0].y = 0;
+	    count[0] = 0;
+	    ccp = 1;
+	    regp = 0;
+
+	    for (y = 0; y < ROWNO; y++) {
+		for (x = 0; x < COLNO; x++) {
+		    struct rm *prm, *rgrm;
+
+		    prm = &levl[x][y];
+		    for (i = 0; i < ccp; i++) {
+			rgrm = &levl[cc[i].x][cc[i].y];
+			if (prm->glyph == rgrm->glyph
+			    && prm->typ == rgrm->typ
+			    && prm->seenv == rgrm->seenv
+			    && prm->horizontal == rgrm->horizontal
+			    && prm->flags == rgrm->flags
+			    && prm->lit == rgrm->lit
+			    && prm->waslit == rgrm->waslit
+			    && prm->roomno == rgrm->roomno
+			    && prm->edge == rgrm->edge)
+			    break;
+		    }
+		    if (i == ccp) {
+			cc[ccp].x = x; cc[ccp].y = y;
+			count[ccp] = 0;
+			ccp++;
+		    }
+		    map[x][y] = i;
+		}
+	    }
+
+	    for (oy = 0; oy < ROWNO; oy++) {
+		for (ox = 0; ox < COLNO; ox++) {
+		    int max_x, max_y;
+		    int ct, oct;
+		    int omap;
+
+		    omap = map[ox][oy];
+		    if (omap < 0)
+			continue;
+
+		    lx = ox + 1; ly = oy + 1;
+		    max_x = COLNO; max_y = ROWNO;
+		    oct = 0;
+		    for (y = oy; y < ROWNO; y++) {
+			if (map[ox][y] != omap)
+			    break;
+
+			for (x = ox; x < max_x; x++)
+			    if (map[x][y] != omap)
+				break;
+
+			max_x = x;
+			ct = (x - ox) * (y - oy + 1);
+			if (ct > oct) {
+			    oct = ct;
+			    lx = x; ly = y + 1;
+			}
+		    }
+
+		    reg_org[regp].x = ox;	reg_org[regp].y = oy;
+		    reg_end[regp].x = lx - 1;	reg_end[regp].y = ly - 1;
+		    reg_map[regp] = omap;
+		    regp++;
+		    count[omap]++;
+
+		    for (y = oy; y < ly; y++)
+			for (x = ox; x < lx; x++)
+			    map[x][y] = -1;
+		}
+	    }
+
+	    background = 0;
+	    for (i = 0; i < ccp; i++)
+		if (count[background] < count[i])
+		    background = i;
+
+/* DEBUG
+	    sprintf(buf, "----- %d: %d/%d -----", background, count[background],regp);
+	    save_comment_xml(fd, buf);
+*/
+
+	    XMLTAG_FLOOR_BGN(fd, COLNO, ROWNO);
+
+	    XMLTAG_RM_BACKGROUND_BGN(fd);
+	    save_rm_xml(fd, "background", &levl[cc[background].x][cc[background].y]);
+	    XMLTAG_RM_BACKGROUND_END(fd);
+
+	    for (i = 0; i < regp; i++) {
+		int omap;
+
+		ox = reg_org[i].x; oy = reg_org[i].y;
+		lx = reg_end[i].x; ly = reg_end[i].y;
+		omap = reg_map[i];
+
+		if (omap == background)
+		    continue;
+
+		x = cc[omap].x; y = cc[omap].y;
+
+		if (lx != ox || ly != oy)
+		    XMLTAG_RM_REGION_BGN(fd, ox, oy, lx, ly);
+
+		sprintf(buf, "%d,%d", ox, oy);
+		if (ox == x && oy == y)
+		    save_rm_xml(fd, buf, &levl[x][y]);
+		else
+		    XMLTAG_RM_POINTER(fd, buf, x, y);
+
+		if (lx != ox || ly != oy)
+		    XMLTAG_RM_REGION_END(fd);
+	    }
+
+	    XMLTAG_FLOOR_END(fd);
+	}else
 #endif
 #ifdef RLECOMP
 	{
@@ -516,6 +768,20 @@ int mode;
 	bwrite(fd,(genericptr_t) levl,sizeof(levl));
 #endif /* RLECOMP */
 
+#ifdef SAVE_FILE_XML
+	if (is_savefile_format_xml) {
+	    save_long_xml(fd, "omoves", monstermoves);
+	    save_stairway_xml(fd, "upstair", &upstair);
+	    save_stairway_xml(fd, "dnstair", &dnstair);
+	    save_stairway_xml(fd, "upladder",&upladder);
+	    save_stairway_xml(fd, "dnladder",&dnladder);
+	    save_stairway_xml(fd, "sstairs", &sstairs);
+	    save_dest_area_xml(fd, "updest", &updest);
+	    save_dest_area_xml(fd, "dndest", &dndest);
+	    save_levelflags_xml(fd, "level.flags", &level.flags);
+	    savedoors_xml(fd, "doors", doors);
+        } else {
+#endif
 	bwrite(fd,(genericptr_t) &monstermoves,sizeof(monstermoves));
 	bwrite(fd,(genericptr_t) &upstair,sizeof(stairway));
 	bwrite(fd,(genericptr_t) &dnstair,sizeof(stairway));
@@ -526,6 +792,9 @@ int mode;
 	bwrite(fd,(genericptr_t) &dndest,sizeof(dest_area));
 	bwrite(fd,(genericptr_t) &level.flags,sizeof(level.flags));
 	bwrite(fd, (genericptr_t) doors, sizeof(doors));
+#ifdef SAVE_FILE_XML
+	}
+#endif
 	save_rooms(fd);	/* no dynamic memory to reclaim */
 
 	/* from here on out, saving also involves allocated memory cleanup */
@@ -550,6 +819,11 @@ int mode;
 	save_engravings(fd, mode);
 	savedamage(fd, mode);
 	save_regions(fd, mode);
+#ifdef SAVE_FILE_XML
+	if (is_savefile_format_xml) {
+	    XMLTAG_LEVELDATA_END(fd);
+	}
+#endif
 	if (mode != FREE_SAVE) bflush(fd);
 }
 
@@ -644,7 +918,7 @@ register int fd;
 }
 
 void
-bwrite(fd, loc, num)
+bwrite_(fd, loc, num)
 int fd;
 genericptr_t loc;
 register unsigned num;
@@ -732,7 +1006,7 @@ bflush(fd)
 }
 
 void
-bwrite(fd,loc,num)
+bwrite_(fd,loc,num)
 register int fd;
 register genericptr_t loc;
 register unsigned num;
@@ -796,16 +1070,33 @@ register int fd, mode;
 	int cnt = 0;
 
 	for (tmplev = sp_levchn; tmplev; tmplev = tmplev->next) cnt++;
-	if (perform_bwrite(mode))
+	if (perform_bwrite(mode)) {
+#ifdef SAVE_FILE_XML
+	  if (is_savefile_format_xml) {
+		  XMLTAG_LEVCHN_BGN(fd, cnt);
+	  } else
+#endif
 	    bwrite(fd, (genericptr_t) &cnt, sizeof(int));
+	}
 
 	for (tmplev = sp_levchn; tmplev; tmplev = tmplev2) {
 	    tmplev2 = tmplev->next;
-	    if (perform_bwrite(mode))
+	    if (perform_bwrite(mode)) {
+#ifdef SAVE_FILE_XML
+	      if (is_savefile_format_xml)
+		save_s_level_xml(fd, "s_level", tmplev);
+	      else
+#endif
 		bwrite(fd, (genericptr_t) tmplev, sizeof(s_level));
+	    }
+
 	    if (release_data(mode))
 		free((genericptr_t) tmplev);
 	}
+#ifdef SAVE_FILE_XML
+	if (perform_bwrite(mode) && is_savefile_format_xml)
+	    XMLTAG_LEVCHN_END(fd);
+#endif
 	if (release_data(mode))
 	    sp_levchn = 0;
 }
@@ -820,23 +1111,44 @@ register int fd, mode;
 	damageptr = level.damagelist;
 	for (tmp_dam = damageptr; tmp_dam; tmp_dam = tmp_dam->next)
 	    xl++;
-	if (perform_bwrite(mode))
+	if (perform_bwrite(mode)) {
+#ifdef SAVE_FILE_XML
+	  if (is_savefile_format_xml)
+	    XMLTAG_DAMAGES_BGN(fd, xl);
+	  else
+#endif
 	    bwrite(fd, (genericptr_t) &xl, sizeof(xl));
+	}
 
 	while (xl--) {
-	    if (perform_bwrite(mode))
+	    if (perform_bwrite(mode)) {
+#ifdef SAVE_FILE_XML
+	      if (is_savefile_format_xml)
+		save_damage_xml(fd, "damage", damageptr);
+	      else
+#endif
 		bwrite(fd, (genericptr_t) damageptr, sizeof(*damageptr));
+	    }
 	    tmp_dam = damageptr;
 	    damageptr = damageptr->next;
 	    if (release_data(mode))
 		free((genericptr_t)tmp_dam);
 	}
+#ifdef SAVE_FILE_XML
+	if (is_savefile_format_xml)
+	    XMLTAG_DAMAGES_END(fd);
+#endif
 	if (release_data(mode))
 	    level.damagelist = 0;
 }
 
 STATIC_OVL void
+#ifdef SAVE_FILE_XML
+saveobjchn_(fd, id, otmp, mode)
+const char *id;
+#else
 saveobjchn(fd, otmp, mode)
+#endif
 register int fd, mode;
 register struct obj *otmp;
 {
@@ -844,15 +1156,75 @@ register struct obj *otmp;
 	unsigned int xl;
 	int minusone = -1;
 
+#ifdef SAVE_FILE_XML
+	if (is_savefile_format_xml && perform_bwrite(mode))
+	    XMLTAG_OBJECTS_BGN(fd, id);
+#endif
 	while(otmp) {
 	    otmp2 = otmp->nobj;
 	    if (perform_bwrite(mode)) {
+#ifdef SAVE_FILE_XML
+		if (is_savefile_format_xml) {
+		    XMLTAG_OBJECT_BGN(fd);
+		    save_object_name_xml(fd, otmp->otyp);
+		    save_objclass_name_xml(fd, otmp->otyp);
+		    if (otmp->oartifact)
+			    save_string_xml(fd, "artifact_name",
+					    artiname(otmp->oartifact));
+		    if (otmp->onamelth)
+			    save_string_xml(fd, "oname", ic2str_xml(ONAME(otmp)));
+		    save_obj_xml(fd, "obj", otmp);
+
+		    save_monster_name_xml(fd, "corpsenm", otmp->corpsenm);
+
+		    if (otmp->oxlth && otmp->oattached != OATTACHED_NOTHING) {
+			switch (otmp->oattached) {
+			case OATTACHED_MONST: {
+			    struct monst *mtmp = get_mtraits(otmp, !!release_data(mode));
+
+			    XMLTAG_OBJ_ATTACHED_BGN(fd, "monst");
+			    savemonchn_(fd, "oextra", mtmp, mode);
+			    break;
+			}
+			case OATTACHED_M_ID: {
+			    unsigned m_id;
+
+			    XMLTAG_OBJ_ATTACHED_BGN(fd, "m_id");
+			    (void) memcpy((genericptr_t)&m_id,
+					  (genericptr_t)otmp->oextra, sizeof(m_id));
+			    save_uint_xml(fd, "m_id", m_id);
+			    break;
+			}
+			case OATTACHED_UNUSED3:
+			default:
+			    XMLTAG_OBJ_ATTACHED_BGN(fd, "unknown");
+			    panic("saveobjchn: don't save XML format, because of oattached = %d", otmp->oattached);
+			    break;
+			}
+			XMLTAG_OBJ_ATTACHED_END(fd);
+		    }
+		} else
+#endif
+		{
 		xl = otmp->oxlth + otmp->onamelth;
 		bwrite(fd, (genericptr_t) &xl, sizeof(int));
 		bwrite(fd, (genericptr_t) otmp, xl + sizeof(struct obj));
 	    }
-	    if (Has_contents(otmp))
+	    }
+	    if (Has_contents(otmp)) {
+#ifdef SAVE_FILE_XML
+		if (is_savefile_format_xml && perform_bwrite(mode)) {
+		    XMLTAG_CONTENTS_BGN(fd);
+		    saveobjchn_(fd, "contents", otmp->cobj, mode);
+		    XMLTAG_CONTENTS_END(fd);
+		} else
+#endif
 		saveobjchn(fd,otmp->cobj,mode);
+	    }
+#ifdef SAVE_FILE_XML
+	    if (is_savefile_format_xml && perform_bwrite(mode))
+		XMLTAG_OBJECT_END(fd);
+#endif
 	    if (release_data(mode)) {
 		if (otmp->oclass == FOOD_CLASS) food_disappears(otmp);
 		if (otmp->oclass == SPBOOK_CLASS) book_disappears(otmp);
@@ -863,12 +1235,23 @@ register struct obj *otmp;
 	    }
 	    otmp = otmp2;
 	}
-	if (perform_bwrite(mode))
+	if (perform_bwrite(mode)) {
+#ifdef SAVE_FILE_XML
+	  if (is_savefile_format_xml)
+	    XMLTAG_OBJECTS_END(fd);
+	  else
+#endif
 	    bwrite(fd, (genericptr_t) &minusone, sizeof(int));
+}
 }
 
 STATIC_OVL void
+#ifdef SAVE_FILE_XML
+savemonchn_(fd, id, mtmp, mode)
+const char *id;
+#else
 savemonchn(fd, mtmp, mode)
+#endif
 register int fd, mode;
 register struct monst *mtmp;
 {
@@ -877,24 +1260,75 @@ register struct monst *mtmp;
 	int minusone = -1;
 	struct permonst *monbegin = &mons[0];
 
-	if (perform_bwrite(mode))
+	if (perform_bwrite(mode)) {
+#ifdef SAVE_FILE_XML
+	  if (is_savefile_format_xml)
+	    XMLTAG_MONSTERS_BGN(fd, id);
+	  else
+#endif
 	    bwrite(fd, (genericptr_t) &monbegin, sizeof(monbegin));
+	}
 
 	while (mtmp) {
 	    mtmp2 = mtmp->nmon;
 	    if (perform_bwrite(mode)) {
+#ifdef SAVE_FILE_XML
+	      if (is_savefile_format_xml) {
+		  int mnum_data = mtmp->data ? monsndx(mtmp->data) : 0;
+
+		  XMLTAG_MONSTER_BGN(fd);
+		  save_monster_name_xml(fd, "mnum", mtmp->mnum);
+
+		  if (mnum_data != mtmp->mnum)
+			  save_monster_name_xml(fd, "data", mnum_data);
+
+		  if (mtmp->mnamelth)
+			  save_string_xml(fd, "mname", ic2str_xml(NAME(mtmp)));
+		  save_monst_xml(fd, "mon", mtmp);
+
+		  if (mtmp->mxlth) {
+		      XMLTAG_MON_EXTRA_DATA_BGN(fd);
+
+		      if (mtmp->isgd) {
+			  save_egd_xml(fd, "egd", EGD(mtmp));
+		      } else if (mtmp->ispriest) {
+			  save_epri_xml(fd, "epri", EPRI(mtmp));
+		      } else if (mtmp->isshk) {
+			  save_eshk_xml(fd, "eshk", ESHK(mtmp));
+		      } else if (mtmp->isminion) {
+			  save_emin_xml(fd, "emin", EMIN(mtmp));
+		      } else if (mtmp->mtame) {
+			  save_edog_xml(fd, "edog", EDOG(mtmp));
+		      }
+
+		      XMLTAG_MON_EXTRA_DATA_END(fd);
+		  }
+	      } else
+#endif
+	      {
 		xl = mtmp->mxlth + mtmp->mnamelth;
 		bwrite(fd, (genericptr_t) &xl, sizeof(int));
 		bwrite(fd, (genericptr_t) mtmp, xl + sizeof(struct monst));
 	    }
+	    }
 	    if (mtmp->minvent)
 		saveobjchn(fd,mtmp->minvent,mode);
+#ifdef SAVE_FILE_XML
+	    if (is_savefile_format_xml && perform_bwrite(mode))
+		XMLTAG_MONSTER_END(fd);
+#endif
 	    if (release_data(mode))
 		dealloc_monst(mtmp);
 	    mtmp = mtmp2;
 	}
-	if (perform_bwrite(mode))
+	if (perform_bwrite(mode)) {
+#ifdef SAVE_FILE_XML
+	  if (is_savefile_format_xml)
+	    XMLTAG_MONSTERS_END(fd);
+	  else
+#endif
 	    bwrite(fd, (genericptr_t) &minusone, sizeof(int));
+}
 }
 
 STATIC_OVL void
@@ -904,16 +1338,33 @@ register struct trap *trap;
 {
 	register struct trap *trap2;
 
+#ifdef SAVE_FILE_XML
+	if (is_savefile_format_xml && perform_bwrite(mode))
+	    XMLTAG_TRAPS_BGN(fd);
+#endif
+
 	while (trap) {
 	    trap2 = trap->ntrap;
-	    if (perform_bwrite(mode))
+	    if (perform_bwrite(mode)) {
+#ifdef SAVE_FILE_XML
+	      if (is_savefile_format_xml)
+		      save_trap_xml(fd, "ftrap", trap);
+	      else
+#endif
 		bwrite(fd, (genericptr_t) trap, sizeof(struct trap));
+	    }
 	    if (release_data(mode))
 		dealloc_trap(trap);
 	    trap = trap2;
 	}
-	if (perform_bwrite(mode))
+	if (perform_bwrite(mode)) {
+#ifdef SAVE_FILE_XML
+	  if (is_savefile_format_xml)
+	    XMLTAG_TRAPS_END(fd);
+	  else
+#endif
 	    bwrite(fd, (genericptr_t)nulls, sizeof(struct trap));
+}
 }
 
 /* save all the fruit names and ID's; this is used only in saving whole games
@@ -927,17 +1378,35 @@ register int fd, mode;
 {
 	register struct fruit *f2, *f1;
 
+#ifdef SAVE_FILE_XML
+	if (perform_bwrite(mode) && is_savefile_format_xml) {
+	    XMLTAG_FRUITS_BGN(fd);
+	}
+#endif
+
 	f1 = ffruit;
 	while (f1) {
 	    f2 = f1->nextf;
-	    if (f1->fid >= 0 && perform_bwrite(mode))
+	    if (f1->fid >= 0 && perform_bwrite(mode)) {
+#ifdef SAVE_FILE_XML
+	      if (is_savefile_format_xml)
+		save_fruit_xml(fd, "fruit", f1);
+	      else
+#endif
 		bwrite(fd, (genericptr_t) f1, sizeof(struct fruit));
+	    }
 	    if (release_data(mode))
 		dealloc_fruit(f1);
 	    f1 = f2;
 	}
-	if (perform_bwrite(mode))
+	if (perform_bwrite(mode)) {
+#ifdef SAVE_FILE_XML
+	  if (is_savefile_format_xml)
+	      XMLTAG_FRUITS_END(fd);
+	  else
+#endif
 	    bwrite(fd, (genericptr_t)nulls, sizeof(struct fruit));
+	}
 	if (release_data(mode))
 	    ffruit = 0;
 }
@@ -1116,5 +1585,64 @@ co_false()	    /* see comment in bones.c */
 }
 
 #endif /* MFLOPPY */
+
+#ifdef SAVE_FILE_XML
+struct var_info_t var_info_save_c[] = {
+	REGIST_VAR_INFO( "artifact_name",	NULL,		STRING		), /* artiname(otmp->oartifact) */
+	REGIST_VAR_INFO( "billobjs",		&billobjs,	struct obj *	),
+	REGIST_VAR_INFO( "contents",		NULL,		struct obj	),
+	REGIST_VAR_INFO( "corpsenm",		NULL,		SPECIAL		), /* otmp->corpsenm */
+	REGIST_VAR_INFO( "current_fruit",	&current_fruit,	int		),
+	REGIST_VAR_INFO( "damage",		NULL,		struct damage	),
+	REGIST_VAR_INFO( "dndest",		&dndest,	dest_area	),
+	REGIST_VAR_INFO( "dnladder",		&dnladder,	struct stairway	),
+	REGIST_VAR_INFO( "dnstair",		&dnstair,	struct stairway	),
+	REGIST_VAR_INFO( "doors",		doors,		coord[DOORMAX]	),
+	REGIST_VAR_INFO( "edog",		NULL,		struct edog	),
+	REGIST_VAR_INFO( "egd",			NULL,		struct egd	),
+	REGIST_VAR_INFO( "emin",		NULL,		struct emin	),
+	REGIST_VAR_INFO( "epri",		NULL,		struct epri	),
+	REGIST_VAR_INFO( "eshk",		NULL,		struct eshk	),
+	REGIST_VAR_INFO( "flags",		&flags,		struct flag	),
+	REGIST_VAR_INFO( "fmon",		&fmon,		struct monst *	),
+	REGIST_VAR_INFO( "fobj",		&fobj,		struct obj *	),
+	REGIST_VAR_INFO( "fruit",		NULL,		struct fruit	),
+	REGIST_VAR_INFO( "ftrap",		NULL,		struct trap	),
+	REGIST_VAR_INFO( "hackpid",		NULL,		int		),
+	REGIST_VAR_INFO( "invent",		&invent,	struct obj *	),
+	REGIST_VAR_INFO( "level.buriedobjlist",	&level.buriedobjlist,struct obj	*),
+	REGIST_VAR_INFO( "level.flags",		&level.flags,	struct levelflags),
+	REGIST_VAR_INFO( "level.monlist",	&fmon,		struct monst *	),
+	REGIST_VAR_INFO( "level.objlist",	&fobj,		struct obj *	),
+	REGIST_VAR_INFO( "m_id",		NULL,		unsigned int	),
+	REGIST_VAR_INFO( "migrating_mons",	&migrating_mons,struct monst *	),
+	REGIST_VAR_INFO( "migrating_objs",	&migrating_objs,struct obj *	),
+	REGIST_VAR_INFO( "mname",		NULL,		STRING		),
+	REGIST_VAR_INFO( "mnum",		NULL,		SPECIAL		),
+	REGIST_VAR_INFO( "mon",			NULL,		struct monst	),
+	REGIST_VAR_INFO( "monstermoves",	&monstermoves,	long		),
+	REGIST_VAR_INFO( "moves",		&moves,		long		),
+	REGIST_VAR_INFO( "mtmp->minvent",	NULL,		struct obj	),
+	REGIST_VAR_INFO( "mvitals",		mvitals,	struct mvitals[NUMMONS]),
+	REGIST_VAR_INFO( "obj",			NULL,		struct obj	),
+	REGIST_VAR_INFO( "oextra",		NULL,		struct monst	),
+	REGIST_VAR_INFO( "omoves",		NULL,		long		),
+	REGIST_VAR_INFO( "oname",		NULL,		STRING		),
+	REGIST_VAR_INFO( "pl_character",	pl_character,	STRING[sizeof pl_character]),
+	REGIST_VAR_INFO( "pl_fruit",		pl_fruit,	STRING[sizeof pl_fruit]),
+	REGIST_VAR_INFO( "quest_status",	&quest_status,	struct q_score	),
+	REGIST_VAR_INFO( "rooms",		rooms,		struct mkroom[(MAXNROFROOMS+1)*2]),
+	REGIST_VAR_INFO( "s_level",		NULL,		s_level		), /* sp_levchn */
+	REGIST_VAR_INFO( "spl_book",		spl_book,	struct spell	),
+	REGIST_VAR_INFO( "sstairs",		&sstairs,	struct stairway	),
+	REGIST_VAR_INFO( "u",			&u,		struct you	),
+	REGIST_VAR_INFO( "uid",			NULL,		int		),
+	REGIST_VAR_INFO( "updest",		&updest,	dest_area	),
+	REGIST_VAR_INFO( "upladder",		&upladder,	struct stairway	),
+	REGIST_VAR_INFO( "upstair",		&upstair,	struct stairway	),
+	REGIST_VAR_INFO( "usteed_id",		NULL,		unsigned int	),
+	REGIST_VAR_INFO( "ustuck_id",		NULL,		unsigned int	),
+};
+#endif /* SAVE_FILE_XML */
 
 /*save.c*/

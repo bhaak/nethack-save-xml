@@ -16,6 +16,10 @@ STATIC_DCL struct artifact artilist[];
  *	  the contents, just the total size.
  */
 
+#ifdef SAVE_FILE_XML
+# include "save_xml.h"
+#endif
+
 extern boolean notonhead;	/* for long worms */
 
 #define get_artifact(o) \
@@ -88,8 +92,45 @@ void
 save_artifacts(fd)
 int fd;
 {
+#ifdef SAVE_FILE_XML
+    if (is_savefile_format_xml) {
+	int i, m;
+	int otyp;
+	boolean done[1+NROFARTIFACTS+1];
+
+	(void) memset((genericptr_t) done, 0, sizeof done);
+
+	/* if artifact is discoverd, set to "true", else "false" */
+	XMLTAG_ARTIFACTS_BGN(fd);
+
+	for(i = 0; i < NROFARTIFACTS; i++) {
+	    if (artidisco[i] == 0) break;	/* empty slot implies end of list */
+	    m = artidisco[i];
+	    otyp = artilist[m].otyp;
+
+	    XMLTAG_ARTIFACT_BGN(fd, artiname(m));
+	    save_bool_xml(fd, "discover", TRUE);
+	    XMLTAG_ARTIFACT_END(fd);
+	    done[m] = TRUE;
+	}
+
+	for(i = 1; i < NROFARTIFACTS + 1; i++) {
+	    if (artiexist[i] && !done[i]) {
+		otyp = artilist[i].otyp;
+
+		XMLTAG_ARTIFACT_BGN(fd, artiname(i));
+		save_bool_xml(fd, "discover", FALSE);
+		XMLTAG_ARTIFACT_END(fd);
+	    }
+	}
+
+	XMLTAG_ARTIFACTS_END(fd);
+    } else
+#endif
+    {
 	bwrite(fd, (genericptr_t) artiexist, sizeof artiexist);
 	bwrite(fd, (genericptr_t) artidisco, sizeof artidisco);
+    }
 }
 
 void
@@ -100,6 +141,42 @@ int fd;
 	mread(fd, (genericptr_t) artidisco, sizeof artidisco);
 	hack_artifacts();	/* redo non-saved special cases */
 }
+
+#ifdef SAVE_FILE_XML
+int
+artname2artino(aname)
+const char *aname;
+{
+	int i;
+
+	for(i = 1; i < NROFARTIFACTS + 1; i++) {
+	    if (!strcmp(artilist[i].name, aname))
+		return i;
+	}
+
+	return 0;
+}
+
+void
+restore_artifact_xml(aname, discovered)
+const char *aname;
+boolean discovered;
+{
+	int artno = artname2artino(aname);
+	int i;
+
+	artiexist[artno] = TRUE;
+
+	if (discovered) {
+	    for (i = 0; i <NROFARTIFACTS; i++)
+		if (artidisco[i] == 0)
+		    break;
+
+	    artidisco[i] = artno;
+	}
+
+}
+#endif /* SAVE_FILE_XML */
 
 const char *
 artiname(artinum)

@@ -113,6 +113,7 @@ struct flag {
 	unsigned short amii_dripens[ 20 ]; /* DrawInfo Pens currently there are 13 in v39 */
 	AMII_COLOR_TYPE amii_curmap[ AMII_MAXCOLORS ]; /* colormap */
 #endif
+	boolean reportscore; // TODO REMOVE ME
 
 	/* KMH, role patch -- Variables used during startup.
 	 *
@@ -275,6 +276,11 @@ struct instance_flags {
 	struct autopickup_exception *autopickup_exceptions[2];
 #define AP_LEAVE 0
 #define AP_GRAB	 1
+#endif
+#ifdef SAVE_FILE_XML
+	int  savefile_format;		/* save file format */
+# define SAVE_FILE_FORMAT_BIN 0
+# define SAVE_FILE_FORMAT_XML 1
 #endif
 #ifdef WIN32CON
 #define MAX_ALTKEYHANDLER 25

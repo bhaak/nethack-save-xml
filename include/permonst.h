@@ -74,6 +74,7 @@ extern NEARDATA struct permonst
 
 #define NON_PM		PM_PLAYERMON		/* "not a monster" */
 #define LOW_PM		(NON_PM+1)		/* first monster in mons[] */
+#define INVALID_PM	(NON_PM-1)		/* invalid value for corpsenm */
 #define SPECIAL_PM	PM_LONG_WORM_TAIL	/* [normal] < ~ < [special] */
 	/* mons[SPECIAL_PM] through mons[NUMMONS-1], inclusive, are
 	   never generated randomly and cannot be polymorphed into */

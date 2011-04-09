@@ -15,6 +15,10 @@
 
 #include "hack.h"
 
+#ifdef SAVE_FILE_XML
+# include "save_xml.h"
+#endif
+
 #ifdef OVLB
 STATIC_DCL boolean FDECL(isbig, (struct mkroom *));
 STATIC_DCL struct mkroom * FDECL(pick_room,(BOOLEAN_P));
@@ -720,9 +724,27 @@ struct mkroom *r;
 	 * of writing the whole structure. That is I should not write
 	 * the subrooms pointers, but who cares ?
 	 */
+#ifdef SAVE_FILE_XML
+	if (is_savefile_format_xml) {
+	    XMLTAG_ROOM_BGN(fd);
+
+	    save_mkroom_xml(fd, "", r);
+
+	    if(r->nsubrooms) {
+		XMLTAG_SUBROOM_BGN(fd, r->nsubrooms);
+		for(i=0; i<r->nsubrooms; i++)
+		    save_room(fd, r->sbrooms[i]);
+		XMLTAG_SUBROOM_END(fd);
+	    }
+
+	    XMLTAG_ROOM_END(fd);
+	} else
+#endif
+	{
 	bwrite(fd, (genericptr_t) r, sizeof(struct mkroom));
 	for(i=0; i<r->nsubrooms; i++)
 	    save_room(fd, r->sbrooms[i]);
+	}
 }
 
 /*
@@ -736,9 +758,18 @@ int fd;
 	short i;
 
 	/* First, write the number of rooms */
+#ifdef SAVE_FILE_XML
+	if (is_savefile_format_xml) {
+	    XMLTAG_ARRAY_BGN(fd, "rooms", nroom);
+	} else
+#endif
 	bwrite(fd, (genericptr_t) &nroom, sizeof(nroom));
 	for(i=0; i<nroom; i++)
 	    save_room(fd, &rooms[i]);
+#ifdef SAVE_FILE_XML
+	if (is_savefile_format_xml)
+	    XMLTAG_ARRAY_END(fd);
+#endif
 }
 
 STATIC_OVL void

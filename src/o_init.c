@@ -5,6 +5,10 @@
 #include "hack.h"
 #include "lev.h"	/* save & restore info */
 
+#ifdef SAVE_FILE_XML
+# include "save_xml.h"
+#endif
+
 STATIC_DCL void FDECL(setgemprobs, (d_level*));
 STATIC_DCL void FDECL(shuffle,(int,int,BOOLEAN_P));
 STATIC_DCL void NDECL(shuffle_all);
@@ -246,9 +250,115 @@ oinit()			/* level dependent initialization */
 	setgemprobs(&u.uz);
 }
 
+#ifdef SAVE_FILE_XML
+
+STATIC_DCL void FDECL(savenames_, (int, int));
+
+static void
+save_object_unknown_name_xml(fd, otyp)
+{
+    if (obj_descr[objects[otyp].oc_descr_idx].oc_descr) {
+	char *buf = gettmpbuf();
+
+	sprintf(buf, "%c", def_oc_syms[(int)objects[otyp].oc_class]);
+
+	XML_SAVE_OBJ_UNKNOWN_NAME(fd, escape_string(buf), otyp);
+    }
+}
+
+void
+restore_disco_xml(oindx, discovered)
+int oindx;
+boolean discovered;
+{
+    int dindx, acls = objects[oindx].oc_class;
+
+    if (!discovered)
+	return;
+
+    for (dindx = bases[acls]; disco[dindx] != 0; dindx++)
+	if (disco[dindx] == oindx) break;
+    disco[dindx] = oindx;
+}
+
+void
+shuffle_tiles_xml()
+{
+#ifdef USE_TILES
+	shuffle_tiles();
+#endif
+}
+
+static void
+savenames_xml_core(fd, otyp, discovered)
+int fd, otyp;
+boolean discovered;
+{
+    if(OBJ_NAME(objects[otyp]) == (char *)0)
+	return;
+
+    XMLTAG_OBJECT_CLASS_BGN(fd);
+
+    save_object_name_xml(fd, otyp);
+    save_object_unknown_name_xml(fd, otyp);
+    save_objclass_name_xml(fd, otyp);
+    save_objclass_xml(fd, "", &objects[otyp]);
+
+    save_bool_xml(fd, "discover",
+		  discovered ? TRUE : FALSE);
+
+    if(objects[otyp].oc_uname)
+	save_string_xml(fd, "oc_uname", ic2str_xml(objects[otyp].oc_uname));
+
+    XMLTAG_OBJECT_CLASS_END(fd);
+
+}
+
 void
 savenames(fd, mode)
 int fd, mode;
+{
+    if (is_savefile_format_xml) {
+	int dindx, acls;
+	boolean disco_cheak[NUM_OBJECTS];
+
+	(void) memset((genericptr_t) disco_cheak, 0, sizeof disco_cheak);
+
+	XMLTAG_OBJECT_CLASSES_BGN(fd);
+	for (acls = 0; acls < MAXOCLASSES; acls++) {
+	    for (dindx = bases[acls];
+		  dindx < NUM_OBJECTS && disco[dindx] != 0
+			 && objects[dindx].oc_class == acls; dindx++) {
+		savenames_xml_core(fd, disco[dindx], TRUE);
+		disco_cheak[disco[dindx]] = TRUE;
+	    }
+
+	    for (dindx = bases[acls];
+		  dindx < NUM_OBJECTS
+			 && objects[dindx].oc_class == acls; dindx++) {
+		if(!(disco_cheak[dindx]))
+		    savenames_xml_core(fd, dindx, FALSE);
+	    }
+	}
+	XMLTAG_OBJECT_CLASSES_END(fd);
+
+	if (release_data(mode))
+	    savenames_(fd, mode & FREE_SAVE);
+    } else {
+	savenames_(fd, mode);
+    }
+}
+
+static void
+savenames_(fd, mode)
+int fd, mode;
+
+#else /* SAVE_FILE_XML */
+
+void
+savenames(fd, mode)
+int fd, mode;
+#endif /* SAVE_FILE_XML */
 {
 	register int i;
 	unsigned int len;
