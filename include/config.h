@@ -143,10 +143,10 @@
 
 #ifndef WIZARD		/* allow for compile-time or Makefile changes */
 # ifndef KR1ED
-#  define WIZARD  "wizard" /* the person allowed to use the -D option */
+#  define WIZARD  "bubi" /* the person allowed to use the -D option */
 # else
 #  define WIZARD
-#  define WIZARD_NAME "wizard"
+#  define WIZARD_NAME "bubi"
 # endif
 #endif
 
@@ -338,7 +338,7 @@ typedef unsigned char	uchar;
 #endif
 
 #define EXP_ON_BOTL	/* Show experience on bottom line */
-/* #define SCORE_ON_BOTL */	/* added by Gary Erickson (erickson@ucivax) */
+#define SCORE_ON_BOTL	/* added by Gary Erickson (erickson@ucivax) */
 
 /*
  * Section 5:  EXPERIMENTAL STUFF
